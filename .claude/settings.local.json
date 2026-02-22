@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /Users/robert/Projects/anyrouter/*.js)",
+      "Bash(wc -l /Users/robert/Projects/anyrouter/*.js)",
+      "Bash(tree -L 2 -I 'node_modules' /Users/robert/Projects/anyrouter 2>/dev/null || find /Users/robert/Projects/anyrouter -not -path '*/node_modules/*' -type f | sort)",
+      "Bash(git -C /Users/robert/Projects/anyrouter log --oneline -10 2>/dev/null || echo \"Not a git repo\")"
+    ]
+  }
+}
