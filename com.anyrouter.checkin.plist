@@ -14,7 +14,6 @@
     <key>WorkingDirectory</key>
     <string>/Users/robert/Projects/anyrouter</string>
 
-    <!-- 每天 08:00 执行，睡眠/关机唤醒后自动补跑 -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>

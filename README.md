@@ -100,8 +100,9 @@ launchctl start com.anyrouter.checkin
 launchctl unload ~/Library/LaunchAgents/com.anyrouter.checkin.plist
 ```
 
-> **注意：** 如果你的 node 不在 `/usr/local/bin/node`，需要修改 plist 文件中的路径。
-> 运行 `which node` 查看实际路径。
+> **注意：** 使用前需要修改 `com.anyrouter.checkin.plist` 中的两个路径：
+> 1. node 路径 — 运行 `which node` 查看你的实际路径
+> 2. `WorkingDirectory` — 改为你本机的项目目录
 
 #### 2. GitHub Actions（云端兜底，每天 22:00）
 
