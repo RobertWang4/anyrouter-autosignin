@@ -6,6 +6,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
 const { chromium } = require("playwright");
 
 const SCRIPT_DIR = __dirname;
@@ -40,6 +41,14 @@ function log(message) {
   const line = `[${timestamp}] ${message}`;
   console.log(line);
   fs.appendFileSync(LOG_FILE, line + "\n", "utf-8");
+}
+
+function notify(title, message) {
+  try {
+    execSync(
+      `osascript -e 'display notification "${message}" with title "${title}"'`
+    );
+  } catch {}
 }
 
 function loadConfig() {
@@ -110,7 +119,7 @@ async function checkinAccount(browser, account) {
 
   try {
     // 1. 打开登录页
-    await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle", timeout: 30000 });
+    await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded", timeout: 60000 });
 
     // 等待页面渲染
     await randomDelay(2000, 4000);
@@ -136,7 +145,7 @@ async function checkinAccount(browser, account) {
     await page.locator('button:has-text("继续"), button:has-text("Continue")').click();
 
     // 4. 等待进入控制台
-    await page.waitForURL("**/console**", { timeout: 30000 });
+    await page.waitForURL("**/console**", { timeout: 60000 });
 
     // 5. 等待余额数据加载
     await randomDelay(3000, 6000);
@@ -149,6 +158,7 @@ async function checkinAccount(browser, account) {
     const spent = spentMatch ? spentMatch[1] : "未知";
 
     log(`[${name}] 签到成功 | 当前余额: ${balance} | 历史消耗: ${spent}`);
+    notify("AnyRouter 签到", `${name} 签到成功 | 余额: ${balance}`);
     return true;
   } catch (e) {
     // 保存截图方便排查
@@ -189,21 +199,44 @@ async function main() {
     return;
   }
 
-  const browser = await chromium.launch({ headless: true });
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MIN = 5 * 60 * 1000;  // 5 分钟
+  const RETRY_DELAY_MAX = 10 * 60 * 1000; // 10 分钟
 
-  let allSuccess = true;
-  for (const acc of accounts) {
-    const success = await checkinAccount(browser, acc);
-    if (!success) allSuccess = false;
-    // 多账号之间随机间隔 30~90 秒
-    if (acc !== accounts[accounts.length - 1]) {
-      await randomDelay(30 * 1000, 90 * 1000);
+  let failedAccounts = [...accounts];
+  let attempt = 0;
+
+  while (failedAccounts.length > 0 && attempt < MAX_RETRIES) {
+    attempt++;
+    if (attempt > 1) {
+      const delayMs = Math.floor(Math.random() * (RETRY_DELAY_MAX - RETRY_DELAY_MIN)) + RETRY_DELAY_MIN;
+      log(`第 ${attempt} 次重试，等待 ${Math.round(delayMs / 1000)} 秒...`);
+      await randomDelay(delayMs, delayMs);
+      log(`开始第 ${attempt} 次重试，共 ${failedAccounts.length} 个账号`);
     }
+
+    const browser = await chromium.launch({ headless: true });
+    const stillFailed = [];
+
+    for (const acc of failedAccounts) {
+      const success = await checkinAccount(browser, acc);
+      if (!success) stillFailed.push(acc);
+      // 多账号之间随机间隔 30~90 秒
+      if (acc !== failedAccounts[failedAccounts.length - 1]) {
+        await randomDelay(30 * 1000, 90 * 1000);
+      }
+    }
+
+    await browser.close();
+    failedAccounts = stillFailed;
   }
 
-  await browser.close();
+  if (failedAccounts.length > 0) {
+    const names = failedAccounts.map((a) => a.name || a.username).join(", ");
+    log(`以下账号经过 ${MAX_RETRIES} 次尝试仍签到失败: ${names}`);
+  }
 
-  if (allSuccess) markCheckedIn();
+  if (failedAccounts.length === 0) markCheckedIn();
   log("全部账号处理完毕");
 }
 
