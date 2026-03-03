@@ -6,12 +6,13 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
 const { chromium } = require("playwright");
+const { notifyWithFallback } = require("./notifier");
 
 const SCRIPT_DIR = __dirname;
 const CONFIG_FILE = path.join(SCRIPT_DIR, "config.json");
 const LOG_FILE = path.join(SCRIPT_DIR, "checkin.log");
+const LAUNCHD_LOG_FILE = path.join(SCRIPT_DIR, "launchd.log");
 const MARKER_FILE = path.join(SCRIPT_DIR, ".last-checkin");
 const BASE_URL = "https://anyrouter.top";
 
@@ -44,11 +45,7 @@ function log(message) {
 }
 
 function notify(title, message) {
-  try {
-    execSync(
-      `osascript -e 'display notification "${message}" with title "${title}"'`
-    );
-  } catch {}
+  notifyWithFallback(title, message, LAUNCHD_LOG_FILE);
 }
 
 function loadConfig() {
