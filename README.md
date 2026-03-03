@@ -11,7 +11,7 @@
 - 随机延迟：启动前随机等待 1~10 分钟，多账号间随机间隔 30~90 秒
 - 当日去重：同一天内不会重复签到
 - 失败自动重试：签到失败的账号自动重试最多 3 次，每次间隔 5~10 分钟
-- 签到成功时通过 macOS 通知中心推送提醒
+- 签到成功时推送本地通知（优先 `terminal-notifier`，失败自动回退 `osascript`）
 - 失败时自动截图保存，便于排查问题
 - 带时间戳的日志记录
 
@@ -73,6 +73,14 @@ node checkin.js
 [2026/2/22 10:00:30] 全部账号处理完毕
 ```
 
+### 运行测试
+
+项目包含 Node.js 原生测试，可执行：
+
+```bash
+npm test
+```
+
 ### 定时执行
 
 本地优先，云端兜底。脚本内置当日去重逻辑，同一天不会重复签到。
@@ -126,6 +134,8 @@ launchctl unload ~/Library/LaunchAgents/com.anyrouter.checkin.plist
 
 - 运行日志追加写入项目根目录下的 `checkin.log`
 - 登录失败时自动保存截图为 `error-{账号名}.png`，可据此排查页面变化或网络问题
+- `launchd.log` 记录 macOS 定时任务执行输出（如果使用 launchd）
+- `.last-checkin` 用于本地当日去重标记（自动生成）
 
 ## 项目结构
 
@@ -134,10 +144,14 @@ launchctl unload ~/Library/LaunchAgents/com.anyrouter.checkin.plist
 ├── .github/workflows/
 │   └── checkin.yml             # GitHub Actions 工作流
 ├── checkin.js                  # 主签到脚本
+├── notifier.js                 # 本地通知实现（terminal-notifier + osascript 回退）
 ├── config.json                 # 账号配置文件（不提交）
 ├── config.example.json         # 配置模板
 ├── com.anyrouter.checkin.plist # macOS launchd 定时任务
+├── tests/                      # Node.js 原生测试
 ├── checkin.log                 # 运行日志（自动生成）
+├── launchd.log                 # launchd 输出日志（自动生成）
+├── .last-checkin               # 当日去重状态（自动生成）
 ├── error-*.png                 # 失败截图（自动生成）
 └── package.json
 ```
