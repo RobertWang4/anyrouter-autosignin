@@ -1,6 +1,8 @@
 node_modules/
 config.json
 checkin.log
+launchd.log
 error-*.png
 .last-checkin
+.claude/settings.local.json
 .DS_Store
