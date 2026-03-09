@@ -2,9 +2,7 @@ name: Daily Check-in
 
 on:
   schedule:
-    # 每天 UTC 14:00（北京时间 22:00），作为兜底
-    # 本地 launchd 在 08:00 执行，脚本有当日去重逻辑
-    # 如果本地当天已跑过，这里会自动跳过
+    # 每天 UTC 14:00 运行
     - cron: "0 14 * * *"
   workflow_dispatch: # 支持手动触发
 
@@ -31,6 +29,14 @@ jobs:
       - name: Run check-in
         run: node checkin.js
 
+      - name: Send Telegram summary
+        if: ${{ always() && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_TIME_ZONE: America/Toronto
+        run: node telegram-report.js checkin-summary.json
+
       - name: Upload logs and screenshots on failure
         if: always()
         uses: actions/upload-artifact@v4
@@ -38,5 +44,6 @@ jobs:
           name: checkin-logs
           path: |
             checkin.log
+            checkin-summary.json
             error-*.png
           retention-days: 7

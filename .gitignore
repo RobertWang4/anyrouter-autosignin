@@ -1,6 +1,7 @@
 node_modules/
 config.json
 checkin.log
+checkin-summary.json
 launchd.log
 error-*.png
 .last-checkin

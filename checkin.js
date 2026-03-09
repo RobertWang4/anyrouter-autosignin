@@ -7,11 +7,13 @@
 const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
+const { buildRunSummary } = require("./checkin-report");
 const { notifyWithFallback } = require("./notifier");
 
 const SCRIPT_DIR = __dirname;
 const CONFIG_FILE = path.join(SCRIPT_DIR, "config.json");
 const LOG_FILE = path.join(SCRIPT_DIR, "checkin.log");
+const SUMMARY_FILE = path.join(SCRIPT_DIR, "checkin-summary.json");
 const LAUNCHD_LOG_FILE = path.join(SCRIPT_DIR, "launchd.log");
 const MARKER_FILE = path.join(SCRIPT_DIR, ".last-checkin");
 const BASE_URL = "https://anyrouter.top";
@@ -46,6 +48,27 @@ function log(message) {
 
 function notify(title, message) {
   notifyWithFallback(title, message, LAUNCHD_LOG_FILE);
+}
+
+function writeRunSummary(summaryInput) {
+  const summary = buildRunSummary(summaryInput);
+  fs.writeFileSync(SUMMARY_FILE, JSON.stringify(summary, null, 2) + "\n", "utf-8");
+  return summary;
+}
+
+function accountKey(account) {
+  return account.name || account.username;
+}
+
+function collectFinalResults(accounts, finalResults) {
+  return accounts.map((account) => {
+    const key = accountKey(account);
+    return finalResults.get(key) || {
+      name: key,
+      success: false,
+      error: "未执行",
+    };
+  });
 }
 
 function loadConfig() {
@@ -156,85 +179,133 @@ async function checkinAccount(browser, account) {
 
     log(`[${name}] 签到成功 | 当前余额: ${balance} | 历史消耗: ${spent}`);
     notify("AnyRouter 签到", `${name} 签到成功 | 余额: ${balance}`);
-    return true;
+    return {
+      name,
+      success: true,
+      balance,
+      spent,
+      error: null,
+    };
   } catch (e) {
     // 保存截图方便排查
     try {
       await page.screenshot({ path: path.join(SCRIPT_DIR, `error-${name}.png`) });
     } catch {}
     log(`[${name}] 签到失败: ${e.message}`);
-    return false;
+    return {
+      name,
+      success: false,
+      balance: null,
+      spent: null,
+      error: e.message,
+    };
   } finally {
     await context.close();
   }
 }
 
 async function main() {
+  const startedAt = new Date().toISOString();
   const testMode = process.argv.includes("--now");
+  let accounts = [];
+  const finalResults = new Map();
 
-  // 当日去重：已签到则跳过（测试模式除外）
-  if (!testMode && alreadyCheckedInToday()) {
-    log("今日已签到，跳过");
-    return;
-  }
-
-  // 随机延迟 1~10 分钟，避免每天固定时间请求（测试模式跳过）
-  if (!testMode) {
-    const delayMs = Math.floor(Math.random() * (10 * 60 * 1000 - 60 * 1000)) + 60 * 1000;
-    log(`等待 ${Math.round(delayMs / 1000)} 秒后开始签到...`);
-    await randomDelay(delayMs, delayMs);
-  }
-
-  log("==================================================");
-  log("开始执行 AnyRouter 每日签到");
-
-  let accounts;
   try {
-    accounts = loadConfig();
-  } catch (e) {
-    log(`配置错误: ${e.message}`);
-    return;
-  }
+    // 当日去重：已签到则跳过（测试模式除外）
+    if (!testMode && alreadyCheckedInToday()) {
+      const skipReason = "今日已签到，跳过";
+      log(skipReason);
+      writeRunSummary({
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        skipped: true,
+        skipReason,
+      });
+      return;
+    }
 
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY_MIN = 5 * 60 * 1000;  // 5 分钟
-  const RETRY_DELAY_MAX = 10 * 60 * 1000; // 10 分钟
-
-  let failedAccounts = [...accounts];
-  let attempt = 0;
-
-  while (failedAccounts.length > 0 && attempt < MAX_RETRIES) {
-    attempt++;
-    if (attempt > 1) {
-      const delayMs = Math.floor(Math.random() * (RETRY_DELAY_MAX - RETRY_DELAY_MIN)) + RETRY_DELAY_MIN;
-      log(`第 ${attempt} 次重试，等待 ${Math.round(delayMs / 1000)} 秒...`);
+    // 随机延迟 1~10 分钟，避免每天固定时间请求（测试模式跳过）
+    if (!testMode) {
+      const delayMs = Math.floor(Math.random() * (10 * 60 * 1000 - 60 * 1000)) + 60 * 1000;
+      log(`等待 ${Math.round(delayMs / 1000)} 秒后开始签到...`);
       await randomDelay(delayMs, delayMs);
-      log(`开始第 ${attempt} 次重试，共 ${failedAccounts.length} 个账号`);
     }
 
-    const browser = await chromium.launch({ headless: true });
-    const stillFailed = [];
+    log("==================================================");
+    log("开始执行 AnyRouter 每日签到");
 
-    for (const acc of failedAccounts) {
-      const success = await checkinAccount(browser, acc);
-      if (!success) stillFailed.push(acc);
-      // 多账号之间随机间隔 30~90 秒
-      if (acc !== failedAccounts[failedAccounts.length - 1]) {
-        await randomDelay(30 * 1000, 90 * 1000);
+    try {
+      accounts = loadConfig();
+    } catch (e) {
+      log(`配置错误: ${e.message}`);
+      writeRunSummary({
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        error: e.message,
+      });
+      return;
+    }
+
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MIN = 5 * 60 * 1000;  // 5 分钟
+    const RETRY_DELAY_MAX = 10 * 60 * 1000; // 10 分钟
+
+    let failedAccounts = [...accounts];
+    let attempt = 0;
+
+    while (failedAccounts.length > 0 && attempt < MAX_RETRIES) {
+      attempt++;
+      if (attempt > 1) {
+        const delayMs = Math.floor(Math.random() * (RETRY_DELAY_MAX - RETRY_DELAY_MIN)) + RETRY_DELAY_MIN;
+        log(`第 ${attempt} 次重试，等待 ${Math.round(delayMs / 1000)} 秒...`);
+        await randomDelay(delayMs, delayMs);
+        log(`开始第 ${attempt} 次重试，共 ${failedAccounts.length} 个账号`);
       }
+
+      const browser = await chromium.launch({ headless: true });
+      const stillFailed = [];
+
+      for (const acc of failedAccounts) {
+        const result = await checkinAccount(browser, acc);
+        finalResults.set(accountKey(acc), result);
+        if (!result.success) stillFailed.push(acc);
+        // 多账号之间随机间隔 30~90 秒
+        if (acc !== failedAccounts[failedAccounts.length - 1]) {
+          await randomDelay(30 * 1000, 90 * 1000);
+        }
+      }
+
+      await browser.close();
+      failedAccounts = stillFailed;
     }
 
-    await browser.close();
-    failedAccounts = stillFailed;
-  }
+    let runError = null;
+    if (failedAccounts.length > 0) {
+      const names = failedAccounts.map(accountKey).join(", ");
+      runError = `以下账号经过 ${MAX_RETRIES} 次尝试仍签到失败: ${names}`;
+      log(runError);
+    }
 
-  if (failedAccounts.length > 0) {
-    const names = failedAccounts.map((a) => a.name || a.username).join(", ");
-    log(`以下账号经过 ${MAX_RETRIES} 次尝试仍签到失败: ${names}`);
-  }
+    if (failedAccounts.length === 0) markCheckedIn();
+    log("全部账号处理完毕");
 
-  if (failedAccounts.length === 0) markCheckedIn();
-  log("全部账号处理完毕");
+    writeRunSummary({
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      accounts: collectFinalResults(accounts, finalResults),
+      error: runError,
+    });
+  } catch (e) {
+    const message = e.message || String(e);
+    log(`程序异常: ${message}`);
+    writeRunSummary({
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      accounts: collectFinalResults(accounts, finalResults),
+      error: message,
+    });
+    process.exitCode = 1;
+  }
 }
 
 main();
