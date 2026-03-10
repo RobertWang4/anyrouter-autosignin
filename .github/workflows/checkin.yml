@@ -2,8 +2,8 @@ name: Daily Check-in
 
 on:
   schedule:
-    # 每天 UTC 14:00 运行
-    - cron: "0 14 * * *"
+    # 每天北京时间 08:00（UTC 00:00）运行
+    - cron: "0 0 * * *"
   workflow_dispatch: # 支持手动触发
 
 jobs:
@@ -30,12 +30,17 @@ jobs:
         run: node checkin.js
 
       - name: Send Telegram summary
-        if: ${{ always() && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        if: always()
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TIME_ZONE: America/Toronto
-        run: node telegram-report.js checkin-summary.json
+        run: |
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            node telegram-report.js checkin-summary.json
+          else
+            echo "Telegram secrets not configured, skipping"
+          fi
 
       - name: Upload logs and screenshots on failure
         if: always()
