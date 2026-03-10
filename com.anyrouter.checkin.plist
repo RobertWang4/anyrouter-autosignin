@@ -7,8 +7,8 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/node</string>
-        <string>checkin.js</string>
+        <string>/bin/bash</string>
+        <string>/Users/robert/Projects/anyrouter/run-checkin.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -23,8 +23,8 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/robert/Projects/anyrouter/checkin.log</string>
+    <string>/dev/null</string>
     <key>StandardErrorPath</key>
-    <string>/Users/robert/Projects/anyrouter/checkin.log</string>
+    <string>/Users/robert/Projects/anyrouter/checkin-error.log</string>
 </dict>
 </plist>
