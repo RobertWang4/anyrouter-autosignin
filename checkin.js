@@ -178,7 +178,6 @@ async function checkinAccount(browser, account) {
     const spent = spentMatch ? spentMatch[1] : "未知";
 
     log(`[${name}] 签到成功 | 当前余额: ${balance} | 历史消耗: ${spent}`);
-    notify("AnyRouter 签到", `${name} 签到成功 | 余额: ${balance}`);
     return {
       name,
       success: true,
